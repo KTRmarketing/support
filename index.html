@@ -577,8 +577,9 @@ function parseDate(value){
 }
 function endDate(item){return parseDate(item.end);} 
 function postedDate(item){return parseDate(item.posted) || parseDate(item.start) || parseDate(item.end);} 
-// 이번주 신규는 '등록일자'만 기준으로 합니다. 신청시작일로 대체하지 않습니다.
-// 페이지를 열 때의 한국시간 기준, 월요일 00:00 ~ 다음 월요일 00:00 전.
+// '이번주 신규': 이번 주에 신규로 등록되어 모집을 시작하는 사업만 표시.
+// 3월부터 모집 중인 사업의 '운영계획 변경 공고'가 10월에 다시 등록된 경우는 제외합니다.
+// 페이지 열람 시점의 한국시간(월요일~일요일)을 사용합니다.
 function thisWeekBounds(){
  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Seoul',year:'numeric',month:'numeric',day:'numeric'}).formatToParts(new Date());
  const get=k=>Number(parts.find(p=>p.type===k)?.value||0);
@@ -588,10 +589,17 @@ function thisWeekBounds(){
  return [monday,nextMonday];
 }
 function isThisWeekNew(x){
- const date=parseDate(x.posted); // 등록일자 없는 공고는 제외
- if(!date)return false;
- const [start,end]=thisWeekBounds();
- return date>=start && date<end;
+ const posted=parseDate(x.posted);
+ if(!posted)return false; // 등록일자 누락: 신규 여부 확인 불가
+ const [monday,nextMonday]=thisWeekBounds();
+ if(posted<monday || posted>=nextMonday)return false;
+ // 변경/정정/수정/연장 공고는 기존 사업을 재게시한 것으로 보아 신규에서 제외
+ const title=String(x.title||'').replace(/\s+/g,' ');
+ if(/(?:변경|정정|수정|연장)\s*(?:공고|안내|모집|\)|$)/.test(title))return false;
+ // 최초 신청시작일이 이전 주라면 이미 진행 중인 사업이므로 신규에서 제외
+ const opened=parseDate(x.start);
+ if(opened && (opened<monday || opened>=nextMonday))return false;
+ return true;
 }
 
 function deadlineInfo(item){
@@ -625,7 +633,7 @@ function sortRows(rows){
 }
 function renderSort(){
  // 맨 왼쪽은 이번주 신규 '필터', 나머지는 기존 '정렬' 선택
- const week=`<button type="button" id="thisWeekNew" class="sort-btn week-filter ${selectedWeekNew?'active':''}" aria-pressed="${selectedWeekNew}" title="등록일자 기준 이번 주(월요일~일요일) 신규 공고만 표시">이번주 신규</button>`;
+ const week=`<button type="button" id="thisWeekNew" class="sort-btn week-filter ${selectedWeekNew?'active':''}" aria-pressed="${selectedWeekNew}" title="이번 주 등록 및 신청 시작 공고 중 변경·수정·연장 공고 제외">이번주 신규</button>`;
  $('sortBox').innerHTML=week+sortOptions.map(o=>`<button type="button" class="sort-btn ${sortMode===o.key?'active':''}" data-sort="${o.key}">${o.label}</button>`).join('');
  $('thisWeekNew').addEventListener('click',()=>{selectedWeekNew=!selectedWeekNew;renderSort();renderFilters();renderList();});
  $('sortBox').querySelectorAll('button[data-sort]').forEach(btn=>btn.addEventListener('click',()=>{sortMode=btn.dataset.sort; renderSort(); renderList();}));
